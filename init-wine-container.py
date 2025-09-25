@@ -2,7 +2,7 @@
 """
 Wine Container Initialization Script
 
-This script initializes a Wine container and installs DXVK files.
+This script initializes a Wine container, installs Steam dependencies, then DXVK files.
 Default target folder is ./container-01, but can be customized.
 """
 
@@ -14,10 +14,12 @@ import argparse
 from pathlib import Path
 
 
-def run_command(cmd, cwd=None):
+def run_command(cmd, cwd=None, env=None):
     """Run a shell command and return the result."""
     try:
-        result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, shell=True, cwd=cwd, env=env, capture_output=True, text=True
+        )
         if result.returncode != 0:
             print(f"Error running command: {cmd}")
             print(f"Error output: {result.stderr}")
@@ -26,6 +28,13 @@ def run_command(cmd, cwd=None):
     except Exception as e:
         print(f"Exception running command '{cmd}': {e}")
         return False
+
+
+def run_wine_command(cmd, container_path):
+    """Run a Wine command with the specified container path."""
+    env = os.environ.copy()
+    env["WINEPREFIX"] = str(container_path.absolute())
+    return run_command(cmd, env=env)
 
 
 def initialize_wine_container(container_path):
@@ -37,13 +46,15 @@ def initialize_wine_container(container_path):
 
     # Set WINEPREFIX environment variable
     env = os.environ.copy()
-    env['WINEPREFIX'] = str(container_path.absolute())
+    env["WINEPREFIX"] = str(container_path.absolute())
 
     # Initialize Wine (this creates the default Windows file structure)
     print("Creating Wine prefix...")
     cmd = "wineboot --init"
     try:
-        result = subprocess.run(cmd, shell=True, env=env, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, shell=True, env=env, capture_output=True, text=True
+        )
         if result.returncode != 0:
             print(f"Warning: wineboot returned non-zero exit code: {result.returncode}")
             print(f"Output: {result.stdout}")
@@ -53,6 +64,30 @@ def initialize_wine_container(container_path):
         return False
 
     print("Wine container initialized successfully!")
+    return True
+
+
+def install_steam_dependencies(container_path):
+    """Install Steam dependencies using winetricks."""
+    print("Installing Steam dependencies...")
+
+    # Check if winetricks is available
+    if not shutil.which("winetricks"):
+        print("Error: winetricks is not installed or not in PATH")
+        print("Please install winetricks first:")
+        print("  Ubuntu/Debian: sudo apt install winetricks")
+        print("  Arch Linux: sudo pacman -S winetricks")
+        print("  Fedora: sudo dnf install winetricks")
+        return False
+
+    # Use winetricks to install Steam and all its dependencies
+    print("Installing Steam and dependencies with winetricks...")
+    cmd = "winetricks -q steam"
+    if not run_wine_command(cmd, container_path):
+        print("Warning: Steam installation failed, but continuing...")
+        return False
+
+    print("Steam dependencies installation completed!")
     return True
 
 
@@ -95,10 +130,6 @@ def setup_dxvk_registry(container_path, script_dir):
     """Configure Wine registry to use DXVK DLLs by importing the .reg file."""
     print("Configuring Wine registry for DXVK...")
 
-    # Set WINEPREFIX environment variable
-    env = os.environ.copy()
-    env['WINEPREFIX'] = str(container_path.absolute())
-
     # Path to the registry file
     reg_file = script_dir / "dxvk-overrides.reg"
 
@@ -110,45 +141,42 @@ def setup_dxvk_registry(container_path, script_dir):
 
     # Import the registry file using wine regedit
     cmd = f"wine regedit {reg_file}"
-    try:
-        result = subprocess.run(cmd, shell=True, env=env, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"Warning: Registry import returned non-zero exit code: {result.returncode}")
-            print(f"Output: {result.stdout}")
-            print(f"Error: {result.stderr}")
-            return False
-        else:
-            print("DXVK registry configuration completed successfully!")
-            if result.stdout:
-                print("Registry import output:")
-                print(result.stdout)
-            return True
-    except Exception as e:
-        print(f"Error importing DXVK registry: {e}")
+    if not run_wine_command(cmd, container_path):
+        print("Warning: DXVK registry configuration failed, but continuing...")
         return False
+
+    print("DXVK registry configuration completed successfully!")
+    return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Initialize Wine container with DXVK")
+    parser = argparse.ArgumentParser(
+        description="Initialize Wine container with Steam dependencies and DXVK"
+    )
     parser.add_argument(
         "--container-path",
         default="./container-01",
-        help="Path to Wine container directory (default: ./container-01)"
+        help="Path to Wine container directory (default: ./container-01)",
     )
     parser.add_argument(
         "--dxvk-path",
         default="./dependencies/dxvk-2.7.1",
-        help="Path to DXVK directory (default: ./dependencies/dxvk-2.7.1)"
+        help="Path to DXVK directory (default: ./dependencies/dxvk-2.7.1)",
     )
     parser.add_argument(
         "--skip-wine-init",
         action="store_true",
-        help="Skip Wine initialization (useful if container already exists)"
+        help="Skip Wine initialization (useful if container already exists)",
     )
     parser.add_argument(
         "--skip-dxvk-registry",
         action="store_true",
-        help="Skip DXVK registry configuration"
+        help="Skip DXVK registry configuration",
+    )
+    parser.add_argument(
+        "--skip-steam-deps",
+        action="store_true",
+        help="Skip Steam dependencies installation",
     )
 
     args = parser.parse_args()
@@ -182,7 +210,14 @@ def main():
     else:
         print("Skipping Wine initialization")
 
-    # Copy DXVK files
+    # Install Steam dependencies first if not skipped
+    if not args.skip_steam_deps:
+        if not install_steam_dependencies(container_path):
+            print("Warning: Steam dependencies installation failed, but continuing...")
+    else:
+        print("Skipping Steam dependencies installation")
+
+    # Copy DXVK files after Steam
     copy_dxvk_files(container_path, dxvk_path)
 
     # Configure Wine registry for DXVK if not skipped
@@ -195,8 +230,10 @@ def main():
     print("\nWine container setup complete!")
     print(f"Container location: {container_path}")
     print(f"To use this container, set WINEPREFIX={container_path}")
-    print("\nDXVK is now configured to override Wine's built-in D3D libraries.")
+    print("\nSteam and its dependencies have been installed.")
+    print("DXVK is now configured to override Wine's built-in D3D libraries.")
     print("Registry settings imported from: dxvk-overrides.reg")
+    print("\nThe container is ready for Steam with DXVK acceleration!")
 
 
 if __name__ == "__main__":
