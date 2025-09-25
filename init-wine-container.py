@@ -31,14 +31,14 @@ def run_command(cmd, cwd=None):
 def initialize_wine_container(container_path):
     """Initialize a Wine container with default Windows files."""
     print(f"Initializing Wine container at: {container_path}")
-    
+
     # Create container directory if it doesn't exist
     container_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Set WINEPREFIX environment variable
     env = os.environ.copy()
     env['WINEPREFIX'] = str(container_path.absolute())
-    
+
     # Initialize Wine (this creates the default Windows file structure)
     print("Creating Wine prefix...")
     cmd = "wineboot --init"
@@ -51,7 +51,7 @@ def initialize_wine_container(container_path):
     except Exception as e:
         print(f"Error running wineboot: {e}")
         return False
-    
+
     print("Wine container initialized successfully!")
     return True
 
@@ -59,15 +59,15 @@ def initialize_wine_container(container_path):
 def copy_dxvk_files(container_path, dxvk_path):
     """Copy DXVK files to the Wine container's system directories."""
     print("Installing DXVK files...")
-    
+
     # Define target directories
     system32_path = container_path / "drive_c" / "windows" / "system32"
     syswow64_path = container_path / "drive_c" / "windows" / "syswow64"
-    
+
     # Create directories if they don't exist
     system32_path.mkdir(parents=True, exist_ok=True)
     syswow64_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Copy x64 files to system32 (64-bit applications)
     x64_src = dxvk_path / "x64"
     if x64_src.exists():
@@ -77,7 +77,7 @@ def copy_dxvk_files(container_path, dxvk_path):
             print(f"  Copied: {file.name}")
     else:
         print("Warning: x64 DXVK directory not found")
-    
+
     # Copy x32 files to syswow64 (32-bit applications)
     x32_src = dxvk_path / "x32"
     if x32_src.exists():
@@ -87,14 +87,51 @@ def copy_dxvk_files(container_path, dxvk_path):
             print(f"  Copied: {file.name}")
     else:
         print("Warning: x32 DXVK directory not found")
-    
+
     print("DXVK files installed successfully!")
+
+
+def setup_dxvk_registry(container_path, script_dir):
+    """Configure Wine registry to use DXVK DLLs by importing the .reg file."""
+    print("Configuring Wine registry for DXVK...")
+
+    # Set WINEPREFIX environment variable
+    env = os.environ.copy()
+    env['WINEPREFIX'] = str(container_path.absolute())
+
+    # Path to the registry file
+    reg_file = script_dir / "dxvk-overrides.reg"
+
+    if not reg_file.exists():
+        print(f"Error: DXVK registry file not found: {reg_file}")
+        return False
+
+    print(f"Importing DXVK registry settings: {reg_file}")
+
+    # Import the registry file using wine regedit
+    cmd = f"wine regedit {reg_file}"
+    try:
+        result = subprocess.run(cmd, shell=True, env=env, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Warning: Registry import returned non-zero exit code: {result.returncode}")
+            print(f"Output: {result.stdout}")
+            print(f"Error: {result.stderr}")
+            return False
+        else:
+            print("DXVK registry configuration completed successfully!")
+            if result.stdout:
+                print("Registry import output:")
+                print(result.stdout)
+            return True
+    except Exception as e:
+        print(f"Error importing DXVK registry: {e}")
+        return False
 
 
 def main():
     parser = argparse.ArgumentParser(description="Initialize Wine container with DXVK")
     parser.add_argument(
-        "--container-path", 
+        "--container-path",
         default="./container-01",
         help="Path to Wine container directory (default: ./container-01)"
     )
@@ -108,26 +145,35 @@ def main():
         action="store_true",
         help="Skip Wine initialization (useful if container already exists)"
     )
-    
+    parser.add_argument(
+        "--skip-dxvk-registry",
+        action="store_true",
+        help="Skip DXVK registry configuration"
+    )
+
     args = parser.parse_args()
-    
+
+    # Get script directory for finding the registry file
+    script_dir = Path(__file__).parent.resolve()
+
     # Convert to Path objects
     container_path = Path(args.container_path).resolve()
     dxvk_path = Path(args.dxvk_path).resolve()
-    
+
     print(f"Container path: {container_path}")
     print(f"DXVK path: {dxvk_path}")
-    
+    print(f"Script directory: {script_dir}")
+
     # Check if DXVK path exists
     if not dxvk_path.exists():
         print(f"Error: DXVK path does not exist: {dxvk_path}")
         sys.exit(1)
-    
+
     # Check if Wine is installed
     if not shutil.which("wine"):
         print("Error: Wine is not installed or not in PATH")
         sys.exit(1)
-    
+
     # Initialize Wine container if not skipped
     if not args.skip_wine_init:
         if not initialize_wine_container(container_path):
@@ -135,13 +181,22 @@ def main():
             sys.exit(1)
     else:
         print("Skipping Wine initialization")
-    
+
     # Copy DXVK files
     copy_dxvk_files(container_path, dxvk_path)
-    
+
+    # Configure Wine registry for DXVK if not skipped
+    if not args.skip_dxvk_registry:
+        if not setup_dxvk_registry(container_path, script_dir):
+            print("Warning: DXVK registry configuration failed, but continuing...")
+    else:
+        print("Skipping DXVK registry configuration")
+
     print("\nWine container setup complete!")
     print(f"Container location: {container_path}")
     print(f"To use this container, set WINEPREFIX={container_path}")
+    print("\nDXVK is now configured to override Wine's built-in D3D libraries.")
+    print("Registry settings imported from: dxvk-overrides.reg")
 
 
 if __name__ == "__main__":

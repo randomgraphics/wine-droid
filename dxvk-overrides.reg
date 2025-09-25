@@ -1,0 +1,9 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Wine\DllOverrides]
+"d3d8"="native"
+"d3d9"="native"
+"d3d10"="native"
+"d3d10core"="native"
+"d3d11"="native"
+"dxgi"="native"
