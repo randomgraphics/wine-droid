@@ -1,0 +1,3 @@
+[submodule "pc-games"]
+	path = pc-games
+	url = ../pc-games
