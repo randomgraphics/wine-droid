@@ -2,7 +2,7 @@
 """
 Wine Container Initialization Script
 
-This script initializes a Wine container, installs Steam dependencies, then DXVK files.
+This script initializes a Wine container, installs Steam dependencies, DXVK files, and vkd3d-proton.
 Default target folder is ./container-01, but can be customized.
 """
 
@@ -126,6 +126,41 @@ def copy_dxvk_files(container_path, dxvk_path):
     print("DXVK files installed successfully!")
 
 
+def copy_vkd3d_proton_files(container_path, vkd3d_path):
+    """Copy vkd3d-proton files to the Wine container's system directories."""
+    print("Installing vkd3d-proton files...")
+
+    # Define target directories
+    system32_path = container_path / "drive_c" / "windows" / "system32"
+    syswow64_path = container_path / "drive_c" / "windows" / "syswow64"
+
+    # Create directories if they don't exist
+    system32_path.mkdir(parents=True, exist_ok=True)
+    syswow64_path.mkdir(parents=True, exist_ok=True)
+
+    # Copy x64 files to system32 (64-bit applications)
+    x64_src = vkd3d_path / "x64"
+    if x64_src.exists():
+        print("Copying x64 vkd3d-proton files to system32 (64-bit)...")
+        for file in x64_src.glob("*.dll"):
+            shutil.copy2(file, system32_path)
+            print(f"  Copied: {file.name}")
+    else:
+        print("Warning: x64 vkd3d-proton directory not found")
+
+    # Copy x32 files to syswow64 (32-bit applications)
+    x32_src = vkd3d_path / "x86"
+    if x32_src.exists():
+        print("Copying x32 vkd3d-proton files to syswow64 (32-bit)...")
+        for file in x32_src.glob("*.dll"):
+            shutil.copy2(file, syswow64_path)
+            print(f"  Copied: {file.name}")
+    else:
+        print("Warning: x32 vkd3d-proton directory not found")
+
+    print("vkd3d-proton files installed successfully!")
+
+
 def setup_dxvk_registry(container_path, script_dir):
     """Configure Wine registry to use DXVK DLLs by importing the .reg file."""
     print("Configuring Wine registry for DXVK...")
@@ -149,9 +184,32 @@ def setup_dxvk_registry(container_path, script_dir):
     return True
 
 
+def setup_vkd3d_proton_registry(container_path, script_dir):
+    """Configure Wine registry to use vkd3d-proton DLLs by importing the .reg file."""
+    print("Configuring Wine registry for vkd3d-proton...")
+
+    # Path to the registry file
+    reg_file = script_dir / "vkd3d-proton-overrides.reg"
+
+    if not reg_file.exists():
+        print(f"Error: vkd3d-proton registry file not found: {reg_file}")
+        return False
+
+    print(f"Importing vkd3d-proton registry settings: {reg_file}")
+
+    # Import the registry file using wine regedit
+    cmd = f"wine regedit {reg_file}"
+    if not run_wine_command(cmd, container_path):
+        print("Warning: vkd3d-proton registry configuration failed, but continuing...")
+        return False
+
+    print("vkd3d-proton registry configuration completed successfully!")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Initialize Wine container with Steam dependencies and DXVK"
+        description="Initialize Wine container with Steam dependencies, DXVK, and vkd3d-proton"
     )
     parser.add_argument(
         "--container-path",
@@ -162,6 +220,11 @@ def main():
         "--dxvk-path",
         default="./dependencies/dxvk-2.7.1",
         help="Path to DXVK directory (default: ./dependencies/dxvk-2.7.1)",
+    )
+    parser.add_argument(
+        "--vkd3d-path",
+        default="./dependencies/vkd3d-proton-2.14.1",
+        help="Path to vkd3d-proton directory (default: ./dependencies/vkd3d-proton-2.14.1)",
     )
     parser.add_argument(
         "--skip-wine-init",
@@ -178,6 +241,11 @@ def main():
         action="store_true",
         help="Skip Steam dependencies installation",
     )
+    parser.add_argument(
+        "--skip-vkd3d",
+        action="store_true",
+        help="Skip vkd3d-proton installation",
+    )
 
     args = parser.parse_args()
 
@@ -187,14 +255,21 @@ def main():
     # Convert to Path objects
     container_path = Path(args.container_path).resolve()
     dxvk_path = Path(args.dxvk_path).resolve()
+    vkd3d_path = Path(args.vkd3d_path).resolve()
 
     print(f"Container path: {container_path}")
     print(f"DXVK path: {dxvk_path}")
+    print(f"vkd3d-proton path: {vkd3d_path}")
     print(f"Script directory: {script_dir}")
 
     # Check if DXVK path exists
     if not dxvk_path.exists():
         print(f"Error: DXVK path does not exist: {dxvk_path}")
+        sys.exit(1)
+
+    # Check if vkd3d-proton path exists
+    if not vkd3d_path.exists():
+        print(f"Error: vkd3d-proton path does not exist: {vkd3d_path}")
         sys.exit(1)
 
     # Check if Wine is installed
@@ -227,13 +302,26 @@ def main():
     else:
         print("Skipping DXVK registry configuration")
 
+    # Copy vkd3d-proton files after DXVK
+    if not args.skip_vkd3d:
+        copy_vkd3d_proton_files(container_path, vkd3d_path)
+        if not setup_vkd3d_proton_registry(container_path, script_dir):
+            print(
+                "Warning: vkd3d-proton registry configuration failed, but continuing..."
+            )
+    else:
+        print("Skipping vkd3d-proton installation")
+
     print("\nWine container setup complete!")
     print(f"Container location: {container_path}")
     print(f"To use this container, set WINEPREFIX={container_path}")
     print("\nSteam and its dependencies have been installed.")
     print("DXVK is now configured to override Wine's built-in D3D libraries.")
-    print("Registry settings imported from: dxvk-overrides.reg")
-    print("\nThe container is ready for Steam with DXVK acceleration!")
+    print("vkd3d-proton is now configured to provide DirectX 12 support.")
+    print(
+        "Registry settings imported from: dxvk-overrides.reg and vkd3d-proton-overrides.reg"
+    )
+    print("\nThe container is ready for Steam with DXVK and vkd3d-proton acceleration!")
 
 
 if __name__ == "__main__":
