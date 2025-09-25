@@ -232,12 +232,12 @@ def main():
         help="Skip Wine initialization (useful if container already exists)",
     )
     parser.add_argument(
-        "--skip-dxvk-registry",
+        "--skip-dxvk",
         action="store_true",
         help="Skip DXVK registry configuration",
     )
     parser.add_argument(
-        "--skip-steam-deps",
+        "--skip-steam",
         action="store_true",
         help="Skip Steam dependencies installation",
     )
@@ -286,17 +286,15 @@ def main():
         print("Skipping Wine initialization")
 
     # Install Steam dependencies first if not skipped
-    if not args.skip_steam_deps:
+    if not args.skip_steam:
         if not install_steam_dependencies(container_path):
             print("Warning: Steam dependencies installation failed, but continuing...")
     else:
         print("Skipping Steam dependencies installation")
 
-    # Copy DXVK files after Steam
-    copy_dxvk_files(container_path, dxvk_path)
-
-    # Configure Wine registry for DXVK if not skipped
-    if not args.skip_dxvk_registry:
+    # Copy DXVK files after Steam. Configure Wine registry for DXVK if not skipped
+    if not args.skip_dxvk:
+        copy_dxvk_files(container_path, dxvk_path)
         if not setup_dxvk_registry(container_path, script_dir):
             print("Warning: DXVK registry configuration failed, but continuing...")
     else:
