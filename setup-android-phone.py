@@ -4,6 +4,11 @@ Android Phone Wine + box64 Setup Script
 
 This script sets up a Wine environment with box64 on a connected Android phone via ADB.
 It handles installation of box64, Wine, and necessary dependencies for running Windows applications.
+
+For SSH-based compilation, the script requires:
+- paramiko: pip install paramiko
+- SSH server running on Termux device
+- termux-user.txt file with SSH connection details
 """
 
 import os
@@ -16,7 +21,48 @@ import urllib.request
 import zipfile
 import tarfile
 import tempfile
+try:
+    import paramiko
+except ImportError:
+    print("Error: paramiko is required for SSH connections")
+    print("Please install it with: pip install paramiko")
+    sys.exit(1)
 from pathlib import Path
+
+
+def read_termux_ssh_config():
+    """Read SSH connection details from termux-user.txt file."""
+    termux_config_path = "/home/chenli/work/wine/termux-user.txt"
+    
+    if not os.path.exists(termux_config_path):
+        print(f"Error: termux-user.txt not found at {termux_config_path}")
+        return None, None, None
+    
+    try:
+        with open(termux_config_path, 'r') as f:
+            lines = f.readlines()
+        
+        host = None
+        port = 8022  # Default SSH port for Termux
+        user = None
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('host='):
+                host = line.split('=', 1)[1]
+            elif line.startswith('port='):
+                port = int(line.split('=', 1)[1])
+            elif line.startswith('user='):
+                user = line.split('=', 1)[1]
+        
+        if not host or not user:
+            print("Error: Missing host or user in termux-user.txt")
+            return None, None, None
+        
+        return host, port, user
+    except Exception as e:
+        print(f"Error reading termux-user.txt: {e}")
+        return None, None, None
 
 
 def run_command(cmd, cwd=None, env=None, check=True):
@@ -99,6 +145,56 @@ def run_adb_command(cmd):
     return run_command(full_cmd, check=False)
 
 
+def run_ssh_command(host, port, user, cmd, timeout=300):
+    """Run a command on Termux device via SSH."""
+    try:
+        # Create SSH client
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # Connect to SSH server
+        print(f"Connecting to {user}@{host}:{port}...")
+        ssh.connect(host, port=port, username=user, timeout=30)
+        
+        # Execute command
+        print(f"Executing command: {cmd}")
+        stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout)
+        
+        # Get output
+        stdout_data = stdout.read().decode('utf-8')
+        stderr_data = stderr.read().decode('utf-8')
+        exit_code = stdout.channel.recv_exit_status()
+        
+        # Close connection
+        ssh.close()
+        
+        # Create a result object similar to subprocess.run
+        class SSHResult:
+            def __init__(self, returncode, stdout, stderr):
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+        
+        result = SSHResult(exit_code, stdout_data, stderr_data)
+        
+        if exit_code != 0:
+            print(f"SSH command failed with exit code {exit_code}")
+            print(f"Error output: {stderr_data}")
+            return False, result
+        
+        return True, result
+        
+    except paramiko.AuthenticationException:
+        print("SSH authentication failed")
+        return False, None
+    except paramiko.SSHException as e:
+        print(f"SSH error: {e}")
+        return False, None
+    except Exception as e:
+        print(f"Error connecting via SSH: {e}")
+        return False, None
+
+
 def install_termux_on_android():
     """Install Termux on Android device if not present."""
     print("Checking for Termux installation...")
@@ -116,29 +212,84 @@ def install_termux_on_android():
     return False
 
 
-def setup_termux_environment():
-    """Set up Termux environment with necessary packages."""
-    print("Setting up Termux environment...")
+def push_box64_source_to_android():
+    """Push box64 source code to Android device."""
+    print("Pushing box64 source code to Android device...")
     
-    # Update package lists
-    print("Updating Termux packages...")
-    success, result = run_adb_command("termux-change-repo")
+    # Local box64 source directory
+    local_box64_dir = "/home/chenli/work/wine/dependencies/box64"
+    android_box64_dir = "/data/data/com.termux/files/home/wine/dependencies/box64"
+    
+    # Check if local box64 source exists
+    if not os.path.exists(local_box64_dir):
+        print(f"Error: Local box64 source not found at {local_box64_dir}")
+        return False
+    
+    # Create target directory on Android
+    run_adb_command(f"mkdir -p {android_box64_dir}")
+    
+    # Push the entire box64 source directory
+    print(f"Pushing box64 source from {local_box64_dir} to {android_box64_dir}")
+    success, result = run_command(f"adb push {local_box64_dir}/. {android_box64_dir}/", check=False)
     if not success:
-        print("Warning: Failed to change Termux repository")
+        print(f"Failed to push box64 source: {result.stderr if result else 'Unknown error'}")
+        return False
     
-    # Install essential packages
-    packages = [
-        "git", "wget", "curl", "unzip", "tar", "python", "python-pip",
-        "build-essential", "cmake", "pkg-config", "libc6-dev"
-    ]
+    print("Box64 source code pushed successfully!")
+    return True
+
+
+def push_compile_script_to_android():
+    """Push compile-box64-termux.py script to Android device."""
+    print("Pushing compile-box64-termux.py to Android device...")
     
-    for package in packages:
-        print(f"Installing {package}...")
-        success, result = run_adb_command(f"pkg install -y {package}")
-        if not success:
-            print(f"Warning: Failed to install {package}")
+    # Local script path
+    local_script = "/home/chenli/work/wine/compile-box64-termux.py"
+    android_script = "/data/data/com.termux/files/home/wine/compile-box64-termux.py"
     
-    print("Termux environment setup completed!")
+    # Check if local script exists
+    if not os.path.exists(local_script):
+        print(f"Error: Local script not found at {local_script}")
+        return False
+    
+    # Create target directory on Android
+    run_adb_command(f"mkdir -p /data/data/com.termux/files/home/wine")
+    
+    # Push the script
+    if not push_file_to_android(local_script, android_script):
+        print("Failed to push compile script to Android device")
+        return False
+    
+    # Make script executable
+    run_adb_command(f"chmod +x {android_script}")
+    
+    print("Compile script pushed successfully!")
+    return True
+
+
+def run_box64_compilation_on_android():
+    """Run box64 compilation script on Android device via SSH."""
+    print("Running box64 compilation on Android device via SSH...")
+    
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
+    
+    # Change to wine directory and run the compilation script
+    compile_cmd = "cd /data/data/com.termux/files/home/wine && python3 compile-box64-termux.py"
+    
+    print("Starting box64 compilation in Termux via SSH...")
+    print("This may take a while depending on your device performance...")
+    
+    # Run the compilation command via SSH
+    success, result = run_ssh_command(host, port, user, compile_cmd, timeout=3600)  # 1 hour timeout
+    if not success:
+        print(f"Box64 compilation failed: {result.stderr if result else 'Unknown error'}")
+        return False
+    
+    print("Box64 compilation completed successfully!")
     return True
 
 
@@ -183,7 +334,22 @@ def install_box64_on_android(install_dir):
     print(f"box64 installed at: {install_dir}/box64")
     return f"{install_dir}/box64"
 
-
+def compile_and_install_box64_in_termux():
+    # Push box64 source code
+    if not push_box64_source_to_android():
+        print("Failed to push box64 source code")
+        return False
+    
+    # Push compilation script
+    if not push_compile_script_to_android():
+        print("Failed to push compilation script")
+        return False
+    
+    # Run compilation
+    if not run_box64_compilation_on_android():
+        print("Failed to compile box64")
+        return False
+  
 def install_wine_on_android(install_dir, box64_path):
     """Install Wine on Android device."""
     print("Installing Wine on Android...")
@@ -395,11 +561,6 @@ def main():
         help="Path to Wine prefix directory on Android (default: /data/data/com.termux/files/home/wine-prefix)",
     )
     parser.add_argument(
-        "--skip-termux-setup",
-        action="store_true",
-        help="Skip Termux environment setup",
-    )
-    parser.add_argument(
         "--skip-box64",
         action="store_true",
         help="Skip box64 installation",
@@ -416,6 +577,10 @@ def main():
     print("=" * 50)
     print(f"Install directory: {args.install_dir}")
     print(f"Wine prefix: {args.container_path}")
+    if args.compile_box64:
+        print("Mode: Compile box64 from source")
+    else:
+        print("Mode: Download pre-built box64")
     print()
 
     # Check ADB connection
@@ -426,17 +591,9 @@ def main():
     if not install_termux_on_android():
         sys.exit(1)
 
-    # Set up Termux environment
-    if not args.skip_termux_setup:
-        if not setup_termux_environment():
-            print("Warning: Termux environment setup failed, but continuing...")
-
     # Install box64
-    box64_path = None
     if not args.skip_box64:
-        box64_path = install_box64_on_android(args.install_dir)
-        if not box64_path:
-            print("Failed to install box64")
+        if not compile_and_install_box64_in_termux():
             sys.exit(1)
     else:
         print("Skipping box64 installation")
@@ -494,6 +651,10 @@ def main():
     print(f"Wine prefix: {args.container_path}")
     print(f"Launch script: {launch_script}")
     print(f"Android launcher: {launcher_script}")
+    if args.compile_box64:
+        print(f"Box64 compiled from source at: {box64_path}")
+    else:
+        print(f"Box64 binary at: {box64_path}")
     print()
     print("To use Wine on your Android device:")
     print("1. Open Termux on your Android device")
@@ -506,6 +667,8 @@ def main():
     print("For configuration, run:")
     print("  winecfg")
     print()
+    if args.compile_box64:
+        print("Note: Box64 was compiled from source for optimal performance on your device.")
     print("Note: Performance may vary depending on your Android device.")
     print("Some applications may not work due to ARM64/x86_64 compatibility issues.")
 
