@@ -1,0 +1,1 @@
+running PC game on android phone via box64, wine, dxvk and etc.
