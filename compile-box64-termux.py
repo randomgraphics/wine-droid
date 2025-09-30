@@ -122,7 +122,7 @@ class TermuxBox64Builder:
         logger.info("Checking Termux environment...")
         
         # Check for Termux-specific environment variables
-        if 'TERMUX' not in os.environ:
+        if 'TERMUX_VERSION' not in os.environ:
             logger.error("Not running in Termux environment!")
             logger.info("This script is designed to run inside Termux on Android.")
             logger.info("Please install Termux from F-Droid or GitHub and run this script there.")

@@ -129,9 +129,17 @@ def download_file(url, destination):
 
 
 def push_file_to_android(local_path, android_path):
-    """Push a file to Android device via ADB."""
+    """Push a file to Android device via SCP."""
     print(f"Pushing {local_path} to {android_path}")
-    cmd = f"adb push {local_path} {android_path}"
+    
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
+    
+    # Use SCP to transfer the file
+    cmd = f"scp -P {port} {local_path} {user}@{host}:{android_path}"
     success, result = run_command(cmd, check=False)
     if not success:
         print(f"Error pushing file: {result.stderr if result else 'Unknown error'}")
@@ -225,12 +233,22 @@ def push_box64_source_to_android():
         print(f"Error: Local box64 source not found at {local_box64_dir}")
         return False
     
-    # Create target directory on Android
-    run_adb_command(f"mkdir -p {android_box64_dir}")
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
     
-    # Push the entire box64 source directory
+    # Create target directory on Android via SSH
+    success, result = run_ssh_command(host, port, user, f"mkdir -p {android_box64_dir}")
+    if not success:
+        print(f"Failed to create target directory: {result.stderr if result else 'Unknown error'}")
+        return False
+    
+    # Push the entire box64 source directory using SCP with recursive flag
     print(f"Pushing box64 source from {local_box64_dir} to {android_box64_dir}")
-    success, result = run_command(f"adb push {local_box64_dir}/. {android_box64_dir}/", check=False)
+    cmd = f"scp -r -P {port} {local_box64_dir}/* {user}@{host}:{android_box64_dir}/"
+    success, result = run_command(cmd, check=False)
     if not success:
         print(f"Failed to push box64 source: {result.stderr if result else 'Unknown error'}")
         return False
@@ -239,7 +257,7 @@ def push_box64_source_to_android():
     return True
 
 
-def push_compile_script_to_android():
+def push_box64_compile_script_to_android():
     """Push compile-box64-termux.py script to Android device."""
     print("Pushing compile-box64-termux.py to Android device...")
     
@@ -252,16 +270,28 @@ def push_compile_script_to_android():
         print(f"Error: Local script not found at {local_script}")
         return False
     
-    # Create target directory on Android
-    run_adb_command(f"mkdir -p /data/data/com.termux/files/home/wine")
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
+    
+    # Create target directory on Android via SSH
+    success, result = run_ssh_command(host, port, user, "mkdir -p /data/data/com.termux/files/home/wine")
+    if not success:
+        print(f"Failed to create target directory: {result.stderr if result else 'Unknown error'}")
+        return False
     
     # Push the script
     if not push_file_to_android(local_script, android_script):
         print("Failed to push compile script to Android device")
         return False
     
-    # Make script executable
-    run_adb_command(f"chmod +x {android_script}")
+    # Make script executable via SSH
+    success, result = run_ssh_command(host, port, user, f"chmod +x {android_script}")
+    if not success:
+        print(f"Failed to make script executable: {result.stderr if result else 'Unknown error'}")
+        return False
     
     print("Compile script pushed successfully!")
     return True
@@ -278,7 +308,7 @@ def run_box64_compilation_on_android():
         return False
     
     # Change to wine directory and run the compilation script
-    compile_cmd = "cd /data/data/com.termux/files/home/wine && python3 compile-box64-termux.py"
+    compile_cmd = "cd ~/wine && python3 compile-box64-termux.py"
     
     print("Starting box64 compilation in Termux via SSH...")
     print("This may take a while depending on your device performance...")
@@ -297,8 +327,17 @@ def install_box64_on_android(install_dir):
     """Install box64 on Android device."""
     print("Installing box64 on Android...")
     
-    # Create install directory
-    run_adb_command(f"mkdir -p {install_dir}")
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return None
+    
+    # Create install directory via SSH
+    success, result = run_ssh_command(host, port, user, f"mkdir -p {install_dir}")
+    if not success:
+        print(f"Failed to create install directory: {result.stderr if result else 'Unknown error'}")
+        return None
     
     # Download box64 for ARM64
     box64_url = "https://github.com/ptitSeb/box64/releases/latest/download/box64-linux-arm64.tar.gz"
@@ -318,17 +357,20 @@ def install_box64_on_android(install_dir):
         os.unlink(tmp_path)
         return None
     
-    # Extract on Android device
-    success, result = run_adb_command(f"cd {install_dir} && tar -xzf {android_tmp}")
+    # Extract on Android device via SSH
+    success, result = run_ssh_command(host, port, user, f"cd {install_dir} && tar -xzf {android_tmp}")
     if not success:
         print("Failed to extract box64 on Android device")
         return None
     
-    # Make box64 executable
-    run_adb_command(f"chmod +x {install_dir}/box64")
+    # Make box64 executable via SSH
+    success, result = run_ssh_command(host, port, user, f"chmod +x {install_dir}/box64")
+    if not success:
+        print(f"Failed to make box64 executable: {result.stderr if result else 'Unknown error'}")
+        return None
     
-    # Clean up
-    run_adb_command(f"rm {android_tmp}")
+    # Clean up via SSH
+    run_ssh_command(host, port, user, f"rm {android_tmp}")
     os.unlink(tmp_path)
     
     print(f"box64 installed at: {install_dir}/box64")
@@ -341,9 +383,25 @@ def compile_and_install_box64_in_termux():
         return False
     
     # Push compilation script
-    if not push_compile_script_to_android():
+    if not push_box64_compile_script_to_android():
         print("Failed to push compilation script")
         return False
+
+    # Install python3 in termux
+    print("Installing Python3 in Termux...")
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
+    
+    # Update package list and install python3
+    install_python_cmd = "pkg update && pkg install -y python3"
+    success, result = run_ssh_command(host, port, user, install_python_cmd, timeout=600)  # 10 minute timeout
+    if not success:
+        print(f"Failed to install Python3 in Termux: {result.stderr if result else 'Unknown error'}")
+        return False
+    
+    print("Python3 installed successfully in Termux!")
     
     # Run compilation
     if not run_box64_compilation_on_android():
@@ -419,6 +477,12 @@ def install_winetricks_on_android(container_path, wine_path, box64_path):
     """Install winetricks on Android device."""
     print("Installing winetricks...")
     
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return False
+    
     # Download winetricks
     winetricks_url = "https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks"
     winetricks_path = f"{container_path}/winetricks"
@@ -437,8 +501,12 @@ def install_winetricks_on_android(container_path, wine_path, box64_path):
         os.unlink(tmp_path)
         return False
     
-    # Make winetricks executable
-    run_adb_command(f"chmod +x {winetricks_path}")
+    # Make winetricks executable via SSH
+    success, result = run_ssh_command(host, port, user, f"chmod +x {winetricks_path}")
+    if not success:
+        print(f"Failed to make winetricks executable: {result.stderr if result else 'Unknown error'}")
+        os.unlink(tmp_path)
+        return False
     
     # Clean up
     os.unlink(tmp_path)
@@ -450,6 +518,12 @@ def install_winetricks_on_android(container_path, wine_path, box64_path):
 def create_launch_script_on_android(install_dir, container_path, wine_path, box64_path):
     """Create a launch script on Android device."""
     print("Creating launch script...")
+    
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return None
     
     launch_script = f"{install_dir}/launch-wine.sh"
     
@@ -488,8 +562,12 @@ echo "Example: wine notepad.exe"
         os.unlink(tmp_path)
         return None
     
-    # Make script executable
-    run_adb_command(f"chmod +x {launch_script}")
+    # Make script executable via SSH
+    success, result = run_ssh_command(host, port, user, f"chmod +x {launch_script}")
+    if not success:
+        print(f"Failed to make launch script executable: {result.stderr if result else 'Unknown error'}")
+        os.unlink(tmp_path)
+        return None
     
     # Clean up
     os.unlink(tmp_path)
@@ -501,6 +579,12 @@ echo "Example: wine notepad.exe"
 def create_android_app_launcher(install_dir, launch_script):
     """Create an Android app launcher for easy access."""
     print("Creating Android app launcher...")
+    
+    # Read SSH connection details
+    host, port, user = read_termux_ssh_config()
+    if not host or not user:
+        print("Failed to read SSH connection details from termux-user.txt")
+        return None
     
     # Create a simple launcher script that can be run from Android
     launcher_script = f"{install_dir}/start-wine.sh"
@@ -536,8 +620,12 @@ bash
         os.unlink(tmp_path)
         return None
     
-    # Make launcher executable
-    run_adb_command(f"chmod +x {launcher_script}")
+    # Make launcher executable via SSH
+    success, result = run_ssh_command(host, port, user, f"chmod +x {launcher_script}")
+    if not success:
+        print(f"Failed to make launcher script executable: {result.stderr if result else 'Unknown error'}")
+        os.unlink(tmp_path)
+        return None
     
     # Clean up
     os.unlink(tmp_path)
@@ -577,10 +665,6 @@ def main():
     print("=" * 50)
     print(f"Install directory: {args.install_dir}")
     print(f"Wine prefix: {args.container_path}")
-    if args.compile_box64:
-        print("Mode: Compile box64 from source")
-    else:
-        print("Mode: Download pre-built box64")
     print()
 
     # Check ADB connection
