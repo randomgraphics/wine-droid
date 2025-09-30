@@ -1,0 +1,4 @@
+# specify your termux server info
+host=localhost
+port=8022
+user=u0_a372
