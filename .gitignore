@@ -1,2 +1,4 @@
 /container-*/
 /tmp/
+/build/
+/.vscode/
