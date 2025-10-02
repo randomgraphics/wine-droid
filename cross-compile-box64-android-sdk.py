@@ -244,14 +244,14 @@ class AndroidBox64Builder:
         self.cmake_args.extend([
             f'-DCMAKE_TOOLCHAIN_FILE={self.android_ndk}/build/cmake/android.toolchain.cmake',
             f'-DANDROID_ABI={arch_config["abi"]}',
-            f'-DANDROID_PLATFORM=android-24',  # Minimum API level
+            f'-DANDROID_PLATFORM=android-28',  # Minimum API level
             '-DANDROID_STL=c++_shared',
             '-DANDROID_TOOLCHAIN=clang',
             '-DANDROID_ARM_NEON=ON' if 'arm' in arch else '',
             '-DCMAKE_ANDROID_ARCH_ABI=' + arch_config["abi"],
             '-DCMAKE_ANDROID_NDK=' + str(self.android_ndk),
             '-DCMAKE_SYSTEM_NAME=Android',
-            '-DCMAKE_SYSTEM_VERSION=24',
+            '-DCMAKE_SYSTEM_VERSION=28',
             '-DCMAKE_ANDROID_STL_TYPE=c++_shared'
         ])
         
@@ -590,9 +590,9 @@ Examples:
                        help='Additional CMake arguments')
     parser.add_argument('--jobs', '-j', type=int, default=None,
                        help='Number of parallel build jobs (default: auto-detect)')
-    parser.add_argument('--no-install', action='store_true',
+    parser.add_argument('--install', action='store_true',
                        help='Build without installing')
-    parser.add_argument('--no-package', action='store_true',
+    parser.add_argument('--package', action='store_true',
                        help='Build without creating Android package')
     parser.add_argument('--test', '-t', action='store_true',
                        help='Run tests after building')
@@ -638,11 +638,11 @@ Examples:
         arch=args.arch,
         custom_args=args.cmake_args,
         jobs=args.jobs,
-        install=not args.no_install,
+        install=args.install,
         test=args.test,
         clean_build=args.clean,
         clone_source=not args.no_clone,
-        create_package=not args.no_package
+        create_package=args.package
     )
     
     return 0 if success else 1
