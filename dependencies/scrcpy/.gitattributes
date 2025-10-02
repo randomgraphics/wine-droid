@@ -1,0 +1,4 @@
+icon.png filter=lfs diff=lfs merge=lfs -text
+scrcpy filter=lfs diff=lfs merge=lfs -text
+scrcpy.1 filter=lfs diff=lfs merge=lfs -text
+scrcpy-server filter=lfs diff=lfs merge=lfs -text
