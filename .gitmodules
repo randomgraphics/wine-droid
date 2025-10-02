@@ -1,6 +1,6 @@
 [submodule "pc-games"]
 	path = pc-games
 	url = ../pc-games
-[submodule "box64"]
+[submodule "dependencies/box64"]
 	path = dependencies/box64
-	url = https://github.com/ptitSeb/box64.git
+	url = ../box64
