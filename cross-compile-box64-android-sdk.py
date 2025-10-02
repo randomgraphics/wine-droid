@@ -23,8 +23,11 @@ Examples:
     # Cross-compile with custom build options
     python3 compile-box64/android-sdk.py --cmake-args "-DCMAKE_BUILD_TYPE=Debug"
 
-    # Cross-compile and install to custom location
-    python3 compile-box64/android-sdk.py --install-prefix /path/to/install
+    # Cross-compile and deploy to Termux (run from within Termux)
+    python3 compile-box64/android-sdk.py --termux-deploy
+
+    # Cross-compile without installation
+    python3 compile-box64/android-sdk.py --no-install
 """
 
 import os
@@ -38,8 +41,10 @@ import tempfile
 import urllib.request
 import tarfile
 import json
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+import termux_utils
 
 # Configure logging
 logging.basicConfig(
@@ -360,15 +365,32 @@ class AndroidBox64Builder:
         return True
     
     def install(self) -> bool:
-        """Install box64."""
-        logger.info("Installing box64...")
+        """Deploy box64 to Termux /usr/bin folder."""
+        logger.info("Deploying box64 to Termux /usr/bin...")
         
-        success, result = self._run_command('make install')
-        if not success:
-            logger.error(f"Installation failed: {result.stderr if result else 'Unknown error'}")
+        # Find the box64 binary
+        box64_binary = self.build_dir / "box64"
+        if not box64_binary.exists():
+            logger.error("Box64 binary not found after build")
             return False
         
-        logger.info("Installation successful")
+        # Push the binary to Termux
+        termux_bin_path = "~/../usr/bin/box64"
+        if not termux_utils.push_file_to_android(str(box64_binary), termux_bin_path):
+            logger.error("Failed to push box64 to Termux")
+            return False
+        
+        # Make the binary executable
+        chmod_cmd = "chmod +x ~/../usr/bin/box64"
+        success, result = termux_utils.execute_ssh_command(chmod_cmd)
+        if not success:
+            logger.error(f"Failed to make box64 executable: {result.stderr if result else 'Unknown error'}")
+            return False
+        
+        logger.info("Box64 successfully deployed to Termux!")
+        logger.info(f"Binary location: ~/../usr/bin/box64")
+        logger.info("You can now use 'box64' command in Termux")
+        
         return True
     
     def create_android_package(self, arch: str) -> bool:
@@ -576,6 +598,7 @@ Examples:
   %(prog)s --cmake-args "-DCMAKE_BUILD_TYPE=Debug"  # Custom CMake arguments
   %(prog)s --jobs 8 --create-package         # Build with 8 jobs and create package
   %(prog)s --clean --arch x86_64             # Clean build for x86_64
+  %(prog)s --termux-deploy                   # Deploy to Termux /usr/bin (run from Termux)
   %(prog)s --list-archs                       # Show available architectures
         """
     )
@@ -591,9 +614,7 @@ Examples:
     parser.add_argument('--jobs', '-j', type=int, default=None,
                        help='Number of parallel build jobs (default: auto-detect)')
     parser.add_argument('--install', action='store_true',
-                       help='Build without installing')
-    parser.add_argument('--package', action='store_true',
-                       help='Build without creating Android package')
+                       help='Install box64 to termux /usr/bin folder.')
     parser.add_argument('--test', '-t', action='store_true',
                        help='Run tests after building')
     parser.add_argument('--clean', action='store_true',
@@ -642,7 +663,7 @@ Examples:
         test=args.test,
         clean_build=args.clean,
         clone_source=not args.no_clone,
-        create_package=args.package
+        create_package=False, # obsolete
     )
     
     return 0 if success else 1
