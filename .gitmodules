@@ -1,6 +1,2 @@
-[submodule "dependencies\\box64"]
-	path = dependencies\\box64
-	url = ../box64.a
 [submodule ".\\dependencies\\box64.a"]
-	path = .\\dependencies\\box64.a
 	url = ../box64.a
