@@ -340,8 +340,8 @@ class AndroidBox64Builder:
         arch_config = self.android_archs[arch]
         logger.info(f"Architecture description: {arch_config['description']}")
         
-        # Base CMake command
-        cmake_cmd = ['cmake', str(self.source_dir)]
+        # Base CMake command with Ninja generator
+        cmake_cmd = ['cmake', '-G', 'Ninja', str(self.source_dir)]
         
         # Add custom arguments
         if custom_args:
