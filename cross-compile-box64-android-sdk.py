@@ -74,6 +74,26 @@ class AndroidBox64Builder:
         self.host_arch = platform.machine().lower()
         self.host_system = platform.system().lower()
         
+        # Platform-specific toolchain directory mapping
+        self.toolchain_dirs = {
+            'linux': {
+                'x86_64': 'linux-x86_64',
+                'amd64': 'linux-x86_64',
+                'aarch64': 'linux-aarch64',
+                'arm64': 'linux-aarch64'
+            },
+            'darwin': {
+                'x86_64': 'darwin-x86_64',
+                'amd64': 'darwin-x86_64',
+                'aarch64': 'darwin-x86_64',
+                'arm64': 'darwin-x86_64'
+            },
+            'windows': {
+                'x86_64': 'windows-x86_64',
+                'amd64': 'windows-x86_64'
+            }
+        }
+        
         # Build configuration
         self.cmake_args = []
         self.make_args = []
@@ -111,6 +131,23 @@ class AndroidBox64Builder:
                 'toolchain': 'i686-linux-android'
             }
         }
+    
+    def get_toolchain_dir(self) -> str:
+        """Get the platform-specific toolchain directory name."""
+        system = self.host_system.lower()
+        arch = self.host_arch.lower()
+        
+        if system in self.toolchain_dirs:
+            if arch in self.toolchain_dirs[system]:
+                return self.toolchain_dirs[system][arch]
+            # Fallback to x86_64 if specific arch not found
+            elif 'x86_64' in self.toolchain_dirs[system]:
+                logger.warning(f"Architecture {arch} not found for {system}, falling back to x86_64")
+                return self.toolchain_dirs[system]['x86_64']
+        
+        # Default fallback
+        logger.warning(f"Platform {system} not supported, using linux-x86_64 as fallback")
+        return 'linux-x86_64'
     
     def detect_android_sdk(self) -> bool:
         """Detect Android SDK installation."""
@@ -186,14 +223,18 @@ class AndroidBox64Builder:
     
     def _is_valid_ndk(self, ndk_path: Path) -> bool:
         """Check if the path contains a valid Android NDK."""
+        # Get platform-specific toolchain directory
+        toolchain_dir = self.get_toolchain_dir()
+        
         required_files = [
             'build/cmake/android.toolchain.cmake',
-            'toolchains/llvm/prebuilt/linux-x86_64/bin/clang',
-            'toolchains/llvm/prebuilt/linux-x86_64/bin/clang++'
+            f'toolchains/llvm/prebuilt/{toolchain_dir}/bin/clang',
+            f'toolchains/llvm/prebuilt/{toolchain_dir}/bin/clang++'
         ]
         
         for file_path in required_files:
             if not (ndk_path / file_path).exists():
+                logger.debug(f"Required NDK file not found: {ndk_path / file_path}")
                 return False
         
         return True
@@ -235,11 +276,16 @@ class AndroidBox64Builder:
         arch_config = self.android_archs[arch]
         
         # Set up toolchain paths
-        toolchain_dir = self.android_ndk / "toolchains" / "llvm" / "prebuilt" / "linux-x86_64"
+        toolchain_dir_name = self.get_toolchain_dir()
+        toolchain_dir = self.android_ndk / "toolchains" / "llvm" / "prebuilt" / toolchain_dir_name
         
         if not toolchain_dir.exists():
             logger.error(f"Toolchain directory not found: {toolchain_dir}")
+            logger.error(f"Expected toolchain directory: {toolchain_dir_name}")
+            logger.error(f"Host system: {self.host_system}, Host arch: {self.host_arch}")
             return False
+        
+        logger.info(f"Using toolchain directory: {toolchain_dir}")
         
         # Set up environment variables
         os.environ['ANDROID_NDK_ROOT'] = str(self.android_ndk)
