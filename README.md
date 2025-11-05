@@ -15,11 +15,17 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
 # Install and Config Termux
 
-1. Run `./install-termux.py` to install termux and termux-x11 apps. Follow instructions and prompt on phone to continue and finish the installtion.
+1. Run `. ./init-venv.py` to setup and activate the virtual python environment.
 
-2. Launch Termux app
+2. Connect your phone to your dev PC. Verify that it can be found by `adb devices` command
 
-3. Inside Termud, run the following commands.
+3, Run `./install-termux.py` to install termux and termux-x11 apps. Follow instructions and prompt on phone to continue and finish the installtion.
+
+4. Make sure you phone has internet connection.
+
+5. Launch Termux app. Inside Termud, run the following commands.
+
+    (You may connect to termux via scrcpy.py. This make typing commands in termux much easier)
 
     ```bash
     pkg update
@@ -29,11 +35,9 @@ running PC game on android phone via box64, wine, dxvk and etc.
     passwd # this is to genereta new pasword for login
     ```
 
-    (You may connect to termux via scrcpy.py. This make typing commands in termux much easier)
+6. Update the user name field in termux-user.txt to match the username return by `whoami` command in the previous step.
 
-4. Update the user name field in termux-user.txt to match the username return by `whoami` command in the previous step.
-
-5. Forward termux openssh port to local port via adb:
+7. Forward termux openssh port to local port via adb:
 
     ```bash
     adb forward tcp:8022 tcp:8022
@@ -41,7 +45,7 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
     This command forwards the termux 8022 port (which is what the sshd listens to on your phone), to your localhost 8022 port.
 
-6. Copy your ssh public key to termux for easier login:
+8. Copy your ssh public key to termux for easier login:
 
     ```bash
     ./termux-ssh-login.py --copy-key
@@ -49,13 +53,14 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
     It'll ask for the password. Use the one you generated in step #3 with `passwd` command.
 
+9. Now you should be able to login to the termux process using termux-ssh-login.py script.
 
 # Install wine:amd64 Inside Termux
 
 1. Install and launch an debian distro in termux
 
     ```bash
-    pkg install proot-distro
+    pkg install -y proot-distro
     proot-distro install debian
     proot-distro login debian
     ```
@@ -67,7 +72,7 @@ running PC game on android phone via box64, wine, dxvk and etc.
     dpkg --add-architecture amd64
     dpkg --add-architecture i386
     apt update
-    apt install wget gpg
+    apt install -y wget gpg
     mkdir -pm755 /etc/apt/keyrings
     rm -f /etc/apt/keyrings/winehq-archive.key
     wget -O - https://dl.winehq.org/wine-builds/winehq.key | gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key -
@@ -89,11 +94,14 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
 3. Now, under normal termux prompt (not in debian distro), move the extracted wine:amd64 binaries to your local home folder
 
-    ```
+    ```bash
     mv /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian/opt/wine64-root ~/wine64-root
+    ```
+
+# Install box64 for arm
 
 
-4. Overall simulation flowchart
+# Overall simulation flowchart
 
 ```mermaid
 graph TD
