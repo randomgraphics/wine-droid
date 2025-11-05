@@ -6,11 +6,11 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
 2. adb push your game bianries to /sdcard/Download/ folder, which is mapped to D: drive in the container.
 
-3. Create an container in Winlator, selecting Turnip as Graphics Driver.
+3. Create an container in Winlator, selecting Vortex as Graphics Driver.
 
-4. Launch the container. Run the game on D: drive.
+4. Launch the container. Run the test D3D program from start menu -> System Tools -> Test Direct3D.
 
-5. Enjoy.
+5. Lanch the game on D: drive and enjoy.
 
 
 # Install and Config Termux
