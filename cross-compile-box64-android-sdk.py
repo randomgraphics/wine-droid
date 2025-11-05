@@ -97,7 +97,7 @@ class AndroidBox64Builder:
         # Build configuration
         self.cmake_args = []
         self.make_args = []
-        self.install_prefix = "/tmp/box64/android"
+        self.install_prefix = str(self.script_dir / "build" / "box64" / "android" / "install")
         
         # Android SDK/NDK paths
         self.android_sdk = None
@@ -672,8 +672,8 @@ Examples:
     parser.add_argument('--build-dir',
                        help='Build directory (default: build/box64/android)')
     parser.add_argument('--install-prefix',
-                       default='/tmp/box64/android',
-                       help='Installation prefix (default: /tmp/box64/android)')
+                       default=None,
+                       help='Installation prefix (default: build/box64/android/install)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose output')
     parser.add_argument('--no-clone', action='store_true',
@@ -687,7 +687,10 @@ Examples:
     
     # Create builder instance
     builder = AndroidBox64Builder(args.source_dir, args.build_dir)
-    builder.install_prefix = args.install_prefix
+    
+    # Set install prefix if provided, otherwise use default
+    if args.install_prefix:
+        builder.install_prefix = args.install_prefix
     
     # Override SDK/NDK paths if specified
     if args.android_sdk:

@@ -1,5 +1,18 @@
 running PC game on android phone via box64, wine, dxvk and etc.
 
+# Install and Config Winlator on Android Phone
+
+1. Downlload and install Winlator variation from: https://github.com/coffincolors/winlator
+
+2. adb push your game bianries to /sdcard/Download/ folder, which is mapped to D: drive in the container.
+
+3. Create an container in Winlator, selecting Turnip as Graphics Driver.
+
+4. Launch the container. Run the game on D: drive.
+
+5. Enjoy.
+
+
 # Install and Config Termux
 
 1. Run `./install-termux.py` to install termux and termux-x11 apps. Follow instructions and prompt on phone to continue and finish the installtion.
@@ -78,3 +91,40 @@ running PC game on android phone via box64, wine, dxvk and etc.
 
     ```
     mv /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/debian/opt/wine64-root ~/wine64-root
+
+
+4. Overall simulation flowchart
+
+```mermaid
+graph TD
+    A[PC Game Executable D3D11/D3D12, Win32 APIs, Input, Audio] --> B[CPU Translation<br/>box64 / FEX / QEMU]
+    B --> C[Wine / Proton / Winelib<br/>Implements Win32/NT APIs]
+    C --> D[DXVK / vkd3d-proton<br/>D3D → Vulkan translation]
+    D --> E[Vulkan Runtime<br/>libvulkan + GPU driver]
+    E --> F[Presentation<br/>ANativeWindow → SurfaceFlinger → Display]
+
+    A --> G[Input Mapping<br/>Android → XInput/RawInput]
+    A --> H[Audio Path<br/>XAudio2 → AAudio/OpenSL ES]
+    C --> I[Filesystem & Sandbox<br/>Wine prefix, storage permissions]
+
+    subgraph Android System Layer
+        G
+        H
+        I
+        E
+        F
+    end
+
+    subgraph Compatibility & Translation
+        B
+        C
+        D
+    end
+
+    subgraph Windows Game Layer
+        A
+    end
+
+    classDef layer fill:#2f2f2f,stroke:#555,color:#fff;
+    class A,B,C,D,E,F,G,H,I layer;
+```
